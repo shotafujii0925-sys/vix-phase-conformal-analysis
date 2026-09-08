@@ -1,0 +1,372 @@
+{
+  "panic_episodes": [
+    {
+      "start": "1998-08-31",
+      "end": "1998-10-13"
+    },
+    {
+      "start": "2001-09-17",
+      "end": "2001-09-21"
+    },
+    {
+      "start": "2002-07-22",
+      "end": "2002-10-09"
+    },
+    {
+      "start": "2008-09-29",
+      "end": "2009-04-07"
+    },
+    {
+      "start": "2010-05-07",
+      "end": "2010-05-21"
+    },
+    {
+      "start": "2011-08-08",
+      "end": "2011-10-04"
+    },
+    {
+      "start": "2015-08-24",
+      "end": "2015-08-24"
+    },
+    {
+      "start": "2020-02-28",
+      "end": "2020-06-11"
+    },
+    {
+      "start": "2020-10-28",
+      "end": "2020-10-28"
+    }
+  ],
+  "n_panic_days": 203,
+  "n_panic_episodes": 9,
+  "n_fear_episodes": 18,
+  "n_fear_days": 516,
+  "episode_labels": [
+    "Other_1998",
+    "Other_2001",
+    "Other_2002",
+    "2008_GFC",
+    "Other_2010",
+    "Other_2011",
+    "Other_2015",
+    "2020_COVID",
+    "2020_COVID"
+  ],
+  "leave_one_crisis_out": [
+    {
+      "label": "Baseline(全期間)",
+      "group_counts": {
+        "1_Normal (<20)": 5146,
+        "2_Alert (20-30)": 2574,
+        "3_Fear (30-40)": 516,
+        "4_Panic (>40)": 203
+      },
+      "anova": {
+        "stat": 182.65794666040674,
+        "p": 9.39542134884044e-115
+      },
+      "welch": {
+        "stat": 96.11140585710474,
+        "p": 2.686315698226644e-52
+      },
+      "panic_vs_normal": {
+        "mean_diff": 0.12992526073417526,
+        "welch_t_p": 7.394745163819787e-23,
+        "panic_mean": 0.16974988238297112,
+        "n_panic": 203
+      },
+      "insufficient": false
+    },
+    {
+      "label": "2008_GFCを除外",
+      "group_counts": {
+        "1_Normal (<20)": 5146,
+        "2_Alert (20-30)": 2574,
+        "3_Fear (30-40)": 508,
+        "4_Panic (>40)": 79
+      },
+      "anova": {
+        "stat": 191.5251646068549,
+        "p": 4.24661042240846e-120
+      },
+      "welch": {
+        "stat": 149.75569799318734,
+        "p": 8.831672249929236e-62
+      },
+      "panic_vs_normal": {
+        "mean_diff": 0.20226182910537158,
+        "welch_t_p": 2.3129414135981963e-27,
+        "panic_mean": 0.24208645075416743,
+        "n_panic": 79
+      },
+      "insufficient": false
+    },
+    {
+      "label": "2020_COVIDを除外",
+      "group_counts": {
+        "1_Normal (<20)": 5146,
+        "2_Alert (20-30)": 2556,
+        "3_Fear (30-40)": 495,
+        "4_Panic (>40)": 168
+      },
+      "anova": {
+        "stat": 129.5925855990153,
+        "p": 4.677619173771345e-82
+      },
+      "welch": {
+        "stat": 70.08632398440156,
+        "p": 5.083496872780589e-39
+      },
+      "panic_vs_normal": {
+        "mean_diff": 0.10529290100877223,
+        "welch_t_p": 1.2040515761179089e-13,
+        "panic_mean": 0.14511752265756808,
+        "n_panic": 168
+      },
+      "insufficient": false
+    },
+    {
+      "label": "Other_1998を除外",
+      "group_counts": {
+        "1_Normal (<20)": 5146,
+        "2_Alert (20-30)": 2574,
+        "3_Fear (30-40)": 500,
+        "4_Panic (>40)": 188
+      },
+      "anova": {
+        "stat": 146.99982516717185,
+        "p": 7.589708265688078e-93
+      },
+      "welch": {
+        "stat": 78.78456188976497,
+        "p": 1.0842239147376373e-43
+      },
+      "panic_vs_normal": {
+        "mean_diff": 0.11692871775780991,
+        "welch_t_p": 2.6715071887078726e-18,
+        "panic_mean": 0.15675333940660577,
+        "n_panic": 188
+      },
+      "insufficient": false
+    },
+    {
+      "label": "Other_2001を除外",
+      "group_counts": {
+        "1_Normal (<20)": 5146,
+        "2_Alert (20-30)": 2574,
+        "3_Fear (30-40)": 515,
+        "4_Panic (>40)": 199
+      },
+      "anova": {
+        "stat": 181.07580975662393,
+        "p": 8.735083619399771e-114
+      },
+      "welch": {
+        "stat": 94.58390026561825,
+        "p": 1.7958062528682245e-51
+      },
+      "panic_vs_normal": {
+        "mean_diff": 0.13031917172531024,
+        "welch_t_p": 3.217418763973781e-22,
+        "panic_mean": 0.1701437933741061,
+        "n_panic": 199
+      },
+      "insufficient": false
+    },
+    {
+      "label": "Other_2002を除外",
+      "group_counts": {
+        "1_Normal (<20)": 5146,
+        "2_Alert (20-30)": 2566,
+        "3_Fear (30-40)": 477,
+        "4_Panic (>40)": 193
+      },
+      "anova": {
+        "stat": 205.98903580137207,
+        "p": 6.474102227886149e-129
+      },
+      "welch": {
+        "stat": 112.4433719828021,
+        "p": 4.314489787419203e-59
+      },
+      "panic_vs_normal": {
+        "mean_diff": 0.13547725239894964,
+        "welch_t_p": 8.784440779951732e-23,
+        "panic_mean": 0.1753018740477455,
+        "n_panic": 193
+      },
+      "insufficient": false
+    },
+    {
+      "label": "Other_2010を除外",
+      "group_counts": {
+        "1_Normal (<20)": 5146,
+        "2_Alert (20-30)": 2570,
+        "3_Fear (30-40)": 512,
+        "4_Panic (>40)": 200
+      },
+      "anova": {
+        "stat": 182.941170963477,
+        "p": 6.377140946524785e-115
+      },
+      "welch": {
+        "stat": 95.516715797053,
+        "p": 6.423018006566809e-52
+      },
+      "panic_vs_normal": {
+        "mean_diff": 0.1309752755422794,
+        "welch_t_p": 1.3114757401788204e-22,
+        "panic_mean": 0.17079989719107525,
+        "n_panic": 200
+      },
+      "insufficient": false
+    },
+    {
+      "label": "Other_2011を除外",
+      "group_counts": {
+        "1_Normal (<20)": 5146,
+        "2_Alert (20-30)": 2574,
+        "3_Fear (30-40)": 486,
+        "4_Panic (>40)": 192
+      },
+      "anova": {
+        "stat": 161.72357854120477,
+        "p": 6.491871673346921e-102
+      },
+      "welch": {
+        "stat": 81.03115616137973,
+        "p": 8.383034280484785e-45
+      },
+      "panic_vs_normal": {
+        "mean_diff": 0.12657447479449677,
+        "welch_t_p": 3.676011203808048e-20,
+        "panic_mean": 0.16639909644329262,
+        "n_panic": 192
+      },
+      "insufficient": false
+    },
+    {
+      "label": "Other_2015を除外",
+      "group_counts": {
+        "1_Normal (<20)": 5146,
+        "2_Alert (20-30)": 2574,
+        "3_Fear (30-40)": 516,
+        "4_Panic (>40)": 202
+      },
+      "anova": {
+        "stat": 183.36851173848532,
+        "p": 3.463574294981268e-115
+      },
+      "welch": {
+        "stat": 96.34702545329777,
+        "p": 2.229245899172433e-52
+      },
+      "panic_vs_normal": {
+        "mean_diff": 0.13066992841912572,
+        "welch_t_p": 6.228026404890594e-23,
+        "panic_mean": 0.17049455006792158,
+        "n_panic": 202
+      },
+      "insufficient": false
+    },
+    {
+      "label": "2008_GFCと2020_COVIDの両方を除外",
+      "group_counts": {
+        "1_Normal (<20)": 5146,
+        "2_Alert (20-30)": 2556,
+        "3_Fear (30-40)": 487,
+        "4_Panic (>40)": 44
+      },
+      "anova": {
+        "stat": 119.37684172498598,
+        "p": 1.118367825877431e-75
+      },
+      "welch": {
+        "stat": 81.9241536606579,
+        "p": 1.7748774147708943e-34
+      },
+      "panic_vs_normal": {
+        "mean_diff": 0.1657514531763752,
+        "welch_t_p": 5.0777783878575e-12,
+        "panic_mean": 0.20557607482517107,
+        "n_panic": 44
+      },
+      "insufficient": false
+    }
+  ],
+  "episode_level_inference": {
+    "normal_group_mean": 0.03982462164879585,
+    "episodes": [
+      {
+        "episode": "1998-08-31〜1998-10-13",
+        "label": "Other_1998",
+        "n_panic_days": 15,
+        "mean_return_6m": 0.33263988768674957,
+        "exceeds_normal": true
+      },
+      {
+        "episode": "2001-09-17〜2001-09-21",
+        "label": "Other_2001",
+        "n_panic_days": 4,
+        "mean_return_6m": 0.15015281057400537,
+        "exceeds_normal": true
+      },
+      {
+        "episode": "2002-07-22〜2002-10-09",
+        "label": "Other_2002",
+        "n_panic_days": 10,
+        "mean_return_6m": 0.06259644325282532,
+        "exceeds_normal": true
+      },
+      {
+        "episode": "2008-09-29〜2009-04-07",
+        "label": "2008_GFC",
+        "n_panic_days": 124,
+        "mean_return_6m": 0.1236644880174509,
+        "exceeds_normal": true
+      },
+      {
+        "episode": "2010-05-07〜2010-05-21",
+        "label": "Other_2010",
+        "n_panic_days": 3,
+        "mean_return_6m": 0.09974889517602777,
+        "exceeds_normal": true
+      },
+      {
+        "episode": "2011-08-08〜2011-10-04",
+        "label": "Other_2011",
+        "n_panic_days": 11,
+        "mean_return_6m": 0.22823632787554138,
+        "exceeds_normal": true
+      },
+      {
+        "episode": "2015-08-24〜2015-08-24",
+        "label": "Other_2015",
+        "n_panic_days": 1,
+        "mean_return_6m": 0.01932701002296966,
+        "exceeds_normal": false
+      },
+      {
+        "episode": "2020-02-28〜2020-06-11",
+        "label": "2020_COVID",
+        "n_panic_days": 34,
+        "mean_return_6m": 0.2882717564573451,
+        "exceeds_normal": true
+      },
+      {
+        "episode": "2020-10-28〜2020-10-28",
+        "label": "2020_COVID",
+        "n_panic_days": 1,
+        "mean_return_6m": 0.27824259772196713,
+        "exceeds_normal": true
+      }
+    ],
+    "n_episodes": 9,
+    "n_exceeding_normal": 8,
+    "sign_test_two_sided_p": 0.0390625,
+    "episode_mean_median": 0.15015281057400537,
+    "episode_mean_min": 0.01932701002296966,
+    "episode_mean_max": 0.33263988768674957,
+    "caveat": "n=9は小標本であり検出力は低い。日次p値は自己相関により過大評価される。"
+  }
+}

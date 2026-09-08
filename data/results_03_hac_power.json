@@ -1,0 +1,86 @@
+{
+  "hac_lag_sensitivity": [
+    {
+      "maxlags": 21,
+      "vix_z_coef": 0.006459429143774932,
+      "vix_z_p": 0.06883884892173978,
+      "treasury_p": 0.46105540845113335,
+      "vix_z_significant_5pct": false
+    },
+    {
+      "maxlags": 63,
+      "vix_z_coef": 0.006459429143774932,
+      "vix_z_p": 0.11180694053469549,
+      "treasury_p": 0.6377576441845032,
+      "vix_z_significant_5pct": false
+    },
+    {
+      "maxlags": 126,
+      "vix_z_coef": 0.006459429143774932,
+      "vix_z_p": 0.10676125644995492,
+      "treasury_p": 0.7031082474015267,
+      "vix_z_significant_5pct": false
+    },
+    {
+      "maxlags": 189,
+      "vix_z_coef": 0.006459429143774932,
+      "vix_z_p": 0.10336269877142773,
+      "treasury_p": 0.7245943776348587,
+      "vix_z_significant_5pct": false
+    },
+    {
+      "maxlags": 252,
+      "vix_z_coef": 0.006459429143774932,
+      "vix_z_p": 0.10974858326424068,
+      "treasury_p": 0.7367896770221738,
+      "vix_z_significant_5pct": false
+    },
+    {
+      "maxlags": 315,
+      "vix_z_coef": 0.006459429143774932,
+      "vix_z_p": 0.11369970690603134,
+      "treasury_p": 0.743215525524766,
+      "vix_z_significant_5pct": false
+    }
+  ],
+  "hac_lag_sensitivity_summary": "0/6 lags significant at 5%",
+  "power_analysis": [
+    {
+      "scenario": "Daily",
+      "N": 8439,
+      "observed_eta_sq": 0.061001384368093166,
+      "cohens_f": 0.2548809455057153,
+      "achieved_power": 1.0,
+      "required_n_for_80pct_power": 171.78119752509932,
+      "min_group_n": 203
+    },
+    {
+      "scenario": "Monthly_21d",
+      "N": 402,
+      "observed_eta_sq": 0.05123404945170696,
+      "cohens_f": 0.2323805613238585,
+      "achieved_power": 0.9829875418717586,
+      "required_n_for_80pct_power": 205.8453998472871,
+      "min_group_n": 9
+    },
+    {
+      "scenario": "Quarterly_63d",
+      "N": 134,
+      "observed_eta_sq": 0.04803635566352798,
+      "cohens_f": 0.22463366578315924,
+      "achieved_power": 0.559076100010534,
+      "required_n_for_80pct_power": 220.00830485083824,
+      "min_group_n": 5
+    },
+    {
+      "scenario": "Semiannual_126d",
+      "N": 67,
+      "observed_eta_sq": 0.04693444890267313,
+      "cohens_f": 0.22191388436922846,
+      "achieved_power": 0.28325435191755743,
+      "required_n_for_80pct_power": 225.33594103911923,
+      "min_group_n": 1
+    }
+  ],
+  "upstream_source": "results_01_phase_tests.json"
+}
