@@ -27,6 +27,107 @@ def fmt_p(p: float) -> str:
     return f"{p:.4e}" if p < 1e-3 else f"{p:.4f}"
 
 
+def render_readme(r01, r02, r03, r04, r05):
+    """Generate headline numbers and verdicts from the same JSON as the tables."""
+    ep = r02["episode_level_inference"]
+    h1 = r05["h1_primary"]
+    mae = h1["model_mae"]
+    methods = h1["method_comparison"]["gbm"]
+    lines = [
+        "# VIXは何を予測できて、何を予測できないのか", "",
+        "S&P500将来リターンの識別力の検証と、VIX将来値の時系列コンフォーマル予測。", "",
+        "VIX水準と将来リターンの関係を、重複観測・小標本・危機依存の観点から検証する研究です。",
+        "後半ではVIX自体のh営業日先水準を予測し、区間幅と実際の被覆率を比較します。", "",
+        "このREADMEの数値・判定は `build_key_results.py` が結果JSONから生成します。",
+        "コード変更後は同梱スナップショットで再計算し、README・全数値表・図を同時に更新します。", "",
+        "## 使用データ", "",
+        "S&P500(^GSPC)、VIX(^VIX)、米10年国債利回り(^TNX)の日次終値。",
+        "1990-01-02〜2023-12-29、8,565営業日。Yahoo Finance (yfinance 1.5.1)、2026-09-08取得。",
+        "生データCSVを同梱し、既定ではネットワーク接続なしで再現します。",
+        "S&P500の目的変数は126営業日先の価格リターン（配当を含まない、暦日6ヶ月ではない）。", "",
+        "## 主な結果と解釈", "",
+        f"- 日次フェーズANOVAは F={r01['anova_daily']['standard']['stat']:.4f}、"
+        f"p={fmt_p(r01['anova_daily']['standard']['p'])}。ただし独立観測の前提が成立しません。",
+        f"- ANOVA残差のDurbin-Watsonは {r01['durbin_watson_anova_model']:.4f}。"
+        "日次の126営業日リターンは大幅に重複します。63日間引きでも重複は残り、"
+        "そのKruskal-Wallis p=0.0450は探索的参考値です。",
+        "- VIX_Zと金利水準の回帰では、HACラグ幅6通りすべてでVIX_Zは5%水準で非有意。"
+        "水準のフェーズ比較とZスコアの線形回帰は別モデルであり、同じ仮説の再検定ではありません。",
+        f"- 将来リターン期間が重なるPanicエピソードを統合すると {ep['n_episodes']}個。"
+        f"{ep['n_exceeding_normal']}個でNormal平均を上回りました。独立性と成功確率0.5を仮定した"
+        f"両側二項検定は p={ep['sign_test_two_sided_p']:.4f}。仮定は未検証で、確証的証拠とは扱いません。",
+        f"- VIX_Z単体OLSの調整済みR²は {r04['model1_ols_adj_r2']*100:.2f}%。"
+        f"フェーズANOVAのeta²は {r01['thinned_anova'][0]['eta_sq']*100:.2f}%で、別の量です。"
+        "全標本内の説明力から売買収益やアウトオブサンプル予測力は判断できません。",
+        f"- h=1点予測MAE: persistence {mae['persistence']:.3f} / linear {mae['linear']:.3f} / "
+        f"GBM {mae['gbm']:.3f}。固定した設定ではGBMが単純モデルを下回ります。", "",
+        f"## h=1予測区間の結果（GBM、N={h1['periods']['n_test']}）", "",
+        "| 手法 | カバレッジ（目標90%） | 平均幅 | Winkler score |",
+        "|---|---:|---:|---:|",
+    ]
+    for name, row in methods.items():
+        lines.append(f"| {name} | {row['coverage']*100:.2f}% | {row['mean_width']:.3f} | {row['winkler_score']:.3f} |")
+    lines += ["", "Winkler scoreは区間幅と外れ幅を同時に評価し、小さい方が良い指標です。",
+              "カバレッジ単独の順位を予測区間の優劣として扱いません。", "",
+              "## 手法差の不確実性", "",
+              "2ホライズン × 2モデル × 4比較 × 2指標 = 32比較を1群としてBonferroni補正。",
+              "moving block bootstrap 10,000回、ブロック長はh=1で21件、h=21で42件。",
+              "各補正区間の信頼水準は99.84375%。時系列依存と非定常性に対する近似で、厳密な保証ではありません。", "",
+              "| h | モデル | Winkler比較 | 平均差 | 補正CI | 判定 |", "|---:|---|---|---:|---|---|"]
+    for tag, h in [("h1_primary", 1), ("h21_robustness", 21)]:
+        for model, pairs in r05[tag]["bootstrap"].items():
+            for pair, result in pairs.items():
+                w = result["winkler_diff"]
+                verdict = "差を確認（近似）" if w["significant"] else "明確な差なし"
+                lines.append(f"| {h} | {model} | {pair} | {w['point_diff']:+.3f} | "
+                             f"[{w['ci_family_low']:+.3f}, {w['ci_family_high']:+.3f}] | {verdict} |")
+    lines += ["", "## 危機前後の記述（h=1、GBM）", "",
+              "Panic突入を63営業日の空白で分ける記述用集計です。これらを独立標本とはみなしません。",
+              "予測日基準の各21件の被覆率と、正確な対象日基準の45暦日窓を全数値表に併記します。", "",
+              "| 手法 | 突入前（予測日基準） | 突入後 |", "|---|---:|---:|"]
+    for name, row in h1["crisis_pre_post"]["average"].items():
+        lines.append(f"| {name} | {row['pre_coverage']*100:.1f}% | {row['post_coverage']*100:.1f}% |")
+    mde = r03["power_analysis"][-1]["mde_cohens_f_at_80pct"]
+    lines += ["", "## 実装と限界", "",
+              "- 特徴量とターゲットは市場営業日の元インデックスで作成。Treasury欠損除去前の"
+              "`target_date`を保持し、再学習・残差の解放・較正・危機前後の集計に使用します。",
+              "- 当日の終値を観測した後に予測を発行します。当日に確定した過去予測の残差を先に反映。"
+              "較正末尾の未確定残差も対象日到来時に一度だけ履歴へ追加します。",
+              "- FixedSplitとnaiveはceil((n+1)(1-alpha))番目の残差を使います。"
+              "ローリング手法も同じ順序統計量ですが、順位が標本数を超える場合は最大残差で有限に打ち切ります。",
+              "- ACIはalphaを[0.001,0.5]に制限し、直近500件の残差窓を使用。"
+              "最大残差での打ち切り、更新モデル、時系列の非交換可能性を含むため、90%被覆の理論保証は主張しません。",
+              f"- 観測効果量による事後検出力は使いません。Semiannual N=67の80% power MDEは "
+              f"Cohen's f={mde:.4f}。独立・等分散ANOVAの計画上の近似で、実データの見逃し率ではありません。",
+              "- 間引きの開始位置、VIX閾値、h=1/21、再学習252件、ACI gamma=0.01、"
+              "ブロック長は固定した探索的設定。感度分析・別市場での一般化・売買バックテストは未実施。",
+              "- 図のフェーズ平均CIはIID近似で、重複を補正していない参考表示です。"
+              "コンフォーマル区間の図は対象日を横軸にして実際のターゲットVIXと比較します。", "",
+              "## 再現方法", "", "Python 3.12、`requirements.txt`の固定バージョンで検証。", "", "```bash",
+              "pip install -r requirements.txt",
+              "python vix_analysis.py             # 全分析・h=1/21・結果JSON・全図・README・数値表",
+              "python conformal_vix_forecast.py   # コンフォーマル部分だけ再計算",
+              "python build_key_results.py        # 結果JSONからREADMEと数値表を再生成",
+              "python -m pytest tests/ -v",
+              "python -m flake8", "```", "",
+              "`data_pipeline.py --source online --refresh-snapshot`で元の1990〜2023年データを再取得できます。",
+              "対象期間の終端は固定されており、この指定で最新日まで拡張するわけではありません。", "",
+              "## ドキュメントと図", "",
+              "- [全数値表](docs/key_results.md)", "- [修正後の手法説明](docs/current_methods.md)",
+              "- [以前の詳細レポート（歴史的記録）](docs/detailed_report.md)", "",
+              "![フェーズ別リターン](figures/phase_returns_daily_vs_thinned.png)", "",
+              "![危機前後の区間](figures/conformal_crisis_zoom.png)", "",
+              "![カバレッジと区間幅](figures/conformal_efficiency.png)", "",
+              "## 研究の位置づけとAI利用", "",
+              "VIX水準を説明変数としており、実現分散の予測を差し引く分散リスクプレミアムを構成していません。",
+              "Bollerslev, Tauchen & Zhou (2009), Expected Stock Returns and Variance Risk Premiaなどの"
+              "既存研究に対する新規性や同じ予測力を主張するものではありません。",
+              "重複リターンの扱いにはHodrick (1992)などの先行研究があり、本研究ではその比較は未実施です。", "",
+              "初期分析と研究の方向づけは本人が行い、コード監査・再構築・テスト・文書化にClaude Codeを使用しました。",
+              "その後、Codexでコードと文書の整合性、日付処理、統計推論を再確認し、修正後の結果を再計算しました。", ""]
+    return "\n".join(lines)
+
+
 def main() -> None:
     r01 = load("results_01_phase_tests.json")
     r02 = load("results_02_leave_one_crisis_out.json")
@@ -69,12 +170,12 @@ def main() -> None:
     # --- 2. 重複と間引き ---
     L.append(f"## 2. 重複リターンと間引き（ANOVA型残差 Durbin-Watson = "
              f"{r01['durbin_watson_anova_model']:.4f}）\n")
-    L.append("| Sampling | N | 最小群n | ANOVA p | Welch p | Kruskal p | eta² | 検出力 |")
+    L.append("| Sampling | N | 最小群n | ANOVA p | Welch p | Kruskal p | eta² | 80% power MDE (f) |")
     L.append("|---|---:|---:|---:|---:|---:|---:|---:|")
     power_by_name = {p["scenario"]: p for p in r03["power_analysis"]}
     for row in r01["thinned_anova"]:
         welch = "計算不可" if row.get("welch") is None else fmt_p(row["welch"]["p"])
-        pw = power_by_name.get(row["sampling"], {}).get("achieved_power")
+        pw = power_by_name.get(row["sampling"], {}).get("mde_cohens_f_at_80pct")
         pw_s = f"{pw:.3f}" if pw is not None else "-"
         L.append(f"| {row['sampling']} | {row['N']} | {row['min_group_n']} | "
                  f"{fmt_p(row['anova']['p'])} | {welch} | {fmt_p(row['kruskal']['p'])} | "
@@ -117,7 +218,7 @@ def main() -> None:
     L.append("")
 
     # --- 5. LOCO ---
-    L.append(f"## 5. Leave-one-crisis-out（独立Panicエピソード = {r02['n_panic_episodes']}個 / "
+    L.append(f"## 5. Leave-one-crisis-out（リターン期間非重複Panicエピソード = {r02['n_panic_episodes']}個 / "
              f"Panic日数 {r02['n_panic_days']}日）\n")
     L.append("**注**: 以下のWelch-t p値は日次重複標本に基づくため過大評価されている。"
              "有意性の根拠としては用いず、効果の符号と大きさの安定性のみを読む。\n")
@@ -130,10 +231,10 @@ def main() -> None:
         L.append(f"| {row['label']} | {pv['n_panic']} | {pv['mean_diff']:+.4f} | {fmt_p(pv['welch_t_p'])} |")
     L.append("")
     ep = r02["episode_level_inference"]
-    L.append("### エピソード単位の推論（1エピソード = 1観測、重複を回避）\n")
+    L.append("### エピソード単位の記述と条件付き参考検定\n")
     L.append(f"- 比較基準（Normal群平均）: {ep['normal_group_mean']:+.4f}")
     L.append(f"- {ep['n_episodes']}エピソード中 **{ep['n_exceeding_normal']}個** がNormal平均を上回った")
-    L.append(f"- 符号検定（両側二項検定）: **p = {ep['sign_test_two_sided_p']:.4f}**")
+    L.append(f"- 独立性・成功確率0.5を仮定した両側二項検定の参考値: **p = {ep['sign_test_two_sided_p']:.4f}**")
     L.append(f"- エピソード平均の中央値 = {ep['episode_mean_median']:+.4f}、"
              f"範囲 = [{ep['episode_mean_min']:+.4f}, {ep['episode_mean_max']:+.4f}]")
     L.append(f"- {ep['caveat']}")
@@ -164,7 +265,8 @@ def main() -> None:
         L.append("")
         if "bootstrap" in block:
             L.append("### 手法差の不確実性（moving block bootstrap）\n")
-            L.append("| モデル | 比較 | Winkler差 | 95%CI | 判定 | カバレッジ差 | 95%CI | 判定 |")
+            L.append("32比較全体にBonferroni補正した区間で判定。ブートストラップCIは近似であり、厳密保証ではない。\n")
+            L.append("| モデル | 比較 | Winkler差 | 補正CI | 判定 | カバレッジ差 | 補正CI | 判定 |")
             L.append("|---|---|---:|---|---|---:|---|---|")
             for model_name, pairs in block["bootstrap"].items():
                 for pair, d in pairs.items():
@@ -173,9 +275,9 @@ def main() -> None:
                     cv = "差を確認" if c["significant"] else "**明確な差なし**"
                     L.append(
                         f"| {model_name} | {pair.replace('_vs_', ' − ')} | {w['point_diff']:+.3f} | "
-                        f"[{w['ci95_low']:+.3f}, {w['ci95_high']:+.3f}] | {wv} | "
+                        f"[{w['ci_family_low']:+.3f}, {w['ci_family_high']:+.3f}] | {wv} | "
                         f"{c['point_diff']*100:+.2f}pt | "
-                        f"[{c['ci95_low']*100:+.2f}, {c['ci95_high']*100:+.2f}] | {cv} |")
+                        f"[{c['ci_family_low']*100:+.2f}, {c['ci_family_high']*100:+.2f}] | {cv} |")
             b0 = next(iter(block["bootstrap"].values()))
             meta = next(iter(b0.values()))["winkler_diff"]
             L.append("")
@@ -223,6 +325,7 @@ def main() -> None:
     DOCS_DIR.mkdir(exist_ok=True)
     out = DOCS_DIR / "key_results.md"
     out.write_text("\n".join(L) + "\n", encoding="utf-8")
+    (DOCS_DIR.parent / "README.md").write_text(render_readme(r01, r02, r03, r04, r05), encoding="utf-8")
     print(f"主要結果を {out.relative_to(DOCS_DIR.parent)} に生成しました（{len(L)}行）")
 
 

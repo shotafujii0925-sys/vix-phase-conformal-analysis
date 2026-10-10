@@ -38,7 +38,7 @@ for ax, (title, sub) in zip(
     x_pos = np.arange(len(VIX_PHASE_LABELS))
     ax.errorbar(x_pos, means.values, yerr=ci95.values, fmt="D", color="darkred",
                 markersize=7, capsize=5, linewidth=1.8,
-                label="Mean ± 95% CI", zorder=5)
+                label="Mean ± IID 95% CI (invalid under overlap)", zorder=5)
 
     ax.axhline(0, color="red", linestyle="--", alpha=0.5)
     ax.set_title(title, fontsize=11)
@@ -50,7 +50,7 @@ for ax, (title, sub) in zip(
 
 fig.suptitle(
     "S&P 500 6-Month Future Returns by VIX Phase (1990-2023)\n"
-    "Box = median/IQR; diamond = mean ± 95% CI (matches the ANOVA/t-test claims)",
+    "Box = median/IQR; diamond = mean ± IID 95% CI (overlap is NOT corrected)",
     fontsize=12)
 plt.tight_layout()
 plt.savefig(FIGURES_DIR / "phase_returns_daily_vs_thinned.png", dpi=150, bbox_inches="tight")

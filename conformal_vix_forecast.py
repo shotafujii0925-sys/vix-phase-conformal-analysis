@@ -32,6 +32,7 @@
 from __future__ import annotations
 
 import json
+from collections import deque
 
 import matplotlib
 matplotlib.use("Agg")  # 非対話バックエンドに固定（スクリプト実行で完結させるため）
@@ -60,8 +61,9 @@ REFIT_EVERY = 252       # walk-forward再学習の間隔（約1年）。計算�
 CAL_WINDOW = 500        # ローリング残差窓の長さ（営業日）。固定値、感度分析は未実施
 
 # --- ブロックブートストラップ ---
-N_BOOT = 1000
+N_BOOT = 10000
 BOOT_SEED = 42
+COMPARISON_FAMILY_SIZE = 32  # 2 horizons * 2 models * 4 pairs * 2 metrics
 
 METHODS = ["aci", "rolling_fixed", "fixed_split", "naive"]
 METHOD_LABELS = {
@@ -107,6 +109,7 @@ def build_features(df_raw: pd.DataFrame, h: int) -> pd.DataFrame:
     feat["Treasury_10Y_Diff1"] = df_raw["Treasury_10Y_Diff1"]
 
     feat["target"] = vix.shift(-h)  # 未来値はここでのみ使用
+    feat["target_date"] = pd.Series(df_raw.index, index=df_raw.index).shift(-h)
     feat = feat.dropna(subset=[c for c in feat.columns if c != "VIX_Phase"])
     return feat
 
@@ -118,10 +121,8 @@ def walk_forward_forecast(feat: pd.DataFrame, model_name: str, h: int) -> pd.Ser
     """
     先読みなしのウォークフォワード点予測。
 
-    重要（先読み修正）: 再学習時点 `start` において、行 i の target は i+h 時点で実現するため、
-    学習に使えるのは target が実現済みの行、すなわち i + h <= start となる行 i（= i <= start - h）
-    までに限られる。したがって学習窓は feat.iloc[:start - h + 1] とする。
-    （修正前は feat.iloc[:start] としており、末尾h行のtargetが未実現だった。）
+    学習に使うのは target_date が再学習日以前の行に限る。
+    Treasury欠損除去後の行数を営業日数と取り違えない。
 
     model_name: 'persistence' | 'linear' | 'gbm'
       - persistence: 学習不要のランダムウォーク（h日後もVIXは今日と同じ）
@@ -139,10 +140,10 @@ def walk_forward_forecast(feat: pd.DataFrame, model_name: str, h: int) -> pd.Ser
 
     start = BURN_IN_DAYS
     while start < n:
-        train_end = start - h + 1  # targetが実現済みの行までに限定（先読み防止）
-        if train_end < 100:
+        train = feat.iloc[:start]
+        train = train.loc[train["target_date"] <= feat.index[start]]
+        if len(train) < 100:
             raise ValueError("学習データが不足しています")
-        train = feat.iloc[:train_end]
         end = min(start + REFIT_EVERY, n)
         test_idx = feat.index[start:end]
 
@@ -199,9 +200,28 @@ def evaluate_interval(y, lower, upper, alpha=ALPHA_TARGET, label="") -> dict:
 # =====================================================================
 # 区間構築（4手法）
 # =====================================================================
+def conformal_quantile(scores, alpha, *, cap_at_max=False):
+    """Finite-sample order statistic: ceil((n+1)*(1-alpha)), one-based.
+
+    FixedSplit returns infinity when the required rank exceeds n. The adaptive
+    rolling variant explicitly caps at the largest residual for finite output;
+    that practical cap does not carry a distribution-free coverage guarantee.
+    """
+    values = np.asarray(scores, dtype=float)
+    if values.ndim != 1 or not len(values) or not np.isfinite(values).all():
+        raise ValueError("Finite, nonempty calibration scores are required")
+    if not 0 < alpha < 1:
+        raise ValueError("alpha must be between zero and one")
+    rank = int(np.ceil((len(values) + 1) * (1 - alpha)))
+    if rank > len(values):
+        return float(values.max()) if cap_at_max else float("inf")
+    return float(np.partition(values, rank - 1)[rank - 1])
+
+
 def run_rolling_conformal(resid_abs, pred, target, h, init_history,
                           adaptive: bool, alpha_target=ALPHA_TARGET,
-                          gamma=GAMMA, cal_window=CAL_WINDOW):
+                          gamma=GAMMA, cal_window=CAL_WINDOW,
+                          issue_dates=None, target_dates=None, init_pending=None):
     """
     ローリング残差窓に基づくコンフォーマル予測。
 
@@ -210,7 +230,7 @@ def run_rolling_conformal(resid_abs, pred, target, h, init_history,
 
     フィードバック遅延の扱い（重要）:
       時刻 i で発行した区間の当否は、対象日 i+h の実現値が判明する i+h 時点まで分からない。
-      そこで発行済み区間をキューに積み、h ステップ後に取り出して
+      そこで発行済み区間をキューに積み、実際の対象日が到来したら取り出して
       「そのとき実際に発行した（下限クリップ後の）区間が実現値を含んだか」で被覆判定し、
       その結果だけで alpha を更新する。現在時刻の q で過去の残差を再評価することはしない。
     """
@@ -220,13 +240,29 @@ def run_rolling_conformal(resid_abs, pred, target, h, init_history,
     lower = np.full(n, np.nan)
     upper = np.full(n, np.nan)
 
-    history = list(init_history)   # 判明済み残差（時系列順）
-    pending: list[dict] = []       # 発行済みだが未判明の区間
+    history = list(init_history)
+    pending = deque(init_pending or [])
+    if not history:
+        raise ValueError("Calibration history must not be empty")
+    if (issue_dates is None) != (target_dates is None):
+        raise ValueError("Both issue_dates and target_dates are required")
+    issued = np.arange(n) if issue_dates is None else pd.DatetimeIndex(issue_dates)
+    realized = np.arange(n) + h if target_dates is None else pd.DatetimeIndex(target_dates)
+    if len(issued) != n or len(realized) != n or any(t <= i for i, t in zip(issued, realized)):
+        raise ValueError("Each target date must follow its issue date")
 
     for i in range(n):
+        # Today's closing data is already available to the point model; release
+        # resolved residuals before issuing today's interval, even across gaps.
+        while pending and pending[0]["date"] <= issued[i]:
+            done = pending.popleft()
+            history.append(done["resid"])
+            if adaptive and "lo" in done:
+                covered = done["lo"] <= done["y"] <= done["hi"]
+                err = 0.0 if covered else 1.0
+                alpha_t = float(np.clip(alpha_t + gamma * (alpha_target - err), ALPHA_MIN, ALPHA_MAX))
         alpha_path[i] = alpha_t
-        window = history[-cal_window:] if history else [float(resid_abs[i])]
-        q = float(np.quantile(window, 1 - alpha_t))
+        q = conformal_quantile(history[-cal_window:], alpha_t, cap_at_max=True)
 
         lo = max(float(pred[i]) - q, 0.0)  # VIXは非負なので下限をクリップ
         hi = float(pred[i]) + q
@@ -234,16 +270,7 @@ def run_rolling_conformal(resid_abs, pred, target, h, init_history,
 
         # 発行した区間そのものを保存（判定は必ずこのクリップ後の区間で行う）
         pending.append({"lo": lo, "hi": hi, "y": float(target[i]),
-                        "resid": float(resid_abs[i])})
-
-        if len(pending) > h:
-            done = pending.pop(0)                     # h ステップ前に発行した区間
-            history.append(done["resid"])             # 残差が判明したので履歴に追加
-            covered = (done["lo"] <= done["y"] <= done["hi"])
-            if adaptive:
-                err = 0.0 if covered else 1.0
-                alpha_t = float(np.clip(alpha_t + gamma * (alpha_target - err),
-                                        ALPHA_MIN, ALPHA_MAX))
+                        "resid": float(resid_abs[i]), "date": realized[i]})
 
     return lower, upper, alpha_path
 
@@ -266,7 +293,7 @@ def run_naive_baseline(vix_now, q_naive):
 # ブロックブートストラップ（手法差の不確実性）
 # =====================================================================
 def block_bootstrap_mean_diff(a, b, block_len: int, n_boot: int = N_BOOT,
-                              seed: int = BOOT_SEED) -> dict:
+                              seed: int = BOOT_SEED, family_size: int = 1) -> dict:
     """
     対応のある2系列 a, b（各時点のスコア）の平均差 mean(a)-mean(b) について、
     moving block bootstrap で95%信頼区間を推定する。
@@ -283,17 +310,24 @@ def block_bootstrap_mean_diff(a, b, block_len: int, n_boot: int = N_BOOT,
 
     rng = np.random.default_rng(seed)
     n_blocks = int(np.ceil(n / block_len))
-    starts = rng.integers(0, n - block_len + 1, size=(n_boot, n_blocks))
-    idx = (starts[:, :, None] + np.arange(block_len)[None, None, :])
-    idx = idx.reshape(n_boot, -1)[:, :n]
-    boot = d[idx].mean(axis=1)
+    boot = np.empty(n_boot)
+    for start in range(0, n_boot, 100):
+        size = min(100, n_boot - start)
+        starts = rng.integers(0, n - block_len + 1, size=(size, n_blocks))
+        idx = starts[:, :, None] + np.arange(block_len)[None, None, :]
+        boot[start:start + size] = d[idx.reshape(size, -1)[:, :n]].mean(axis=1)
 
     lo, hi = np.quantile(boot, [0.025, 0.975])
+    tail = 0.05 / (2 * family_size)
+    adj_lo, adj_hi = np.quantile(boot, [tail, 1 - tail])
     return {
         "point_diff": float(d.mean()),
         "ci95_low": float(lo),
         "ci95_high": float(hi),
-        "significant": bool(lo > 0 or hi < 0),  # 0をまたがなければ差が確認できる
+        "significant": bool(adj_lo > 0 or adj_hi < 0),
+        "ci_family_low": float(adj_lo), "ci_family_high": float(adj_hi),
+        "family_size": family_size,
+        "individual_confidence": 1 - 0.05 / family_size,
         "n_boot": int(n_boot),
         "block_len": int(block_len),
         "n_obs": int(n),
@@ -378,18 +412,22 @@ def main(h: int, tag: str, make_plots: bool, source: str = "snapshot",
 
         # 較正期間の残差のうち、Test開始時点で実現済みのものだけを初期履歴に使う（先読み防止）。
         # 行 i の target は i+h 時点で実現するため、末尾 h 件は Test 期間に食い込む。
-        cal_resid_known = cal["resid_abs"].values[:-h] if h > 0 else cal["resid_abs"].values
+        known = cal["target_date"] <= test.index[0]
+        cal_resid_known = cal.loc[known, "resid_abs"].values
         persist_cal_resid = (feat.loc[cal.index, "target"] - feat.loc[cal.index, "VIX"]).abs()
-        persist_cal_known = persist_cal_resid.values[:-h] if h > 0 else persist_cal_resid.values
+        persist_cal_known = persist_cal_resid.loc[known].values
 
-        q_fixed = float(np.quantile(cal_resid_known, 1 - ALPHA_TARGET))
-        q_naive = float(np.quantile(persist_cal_known, 1 - ALPHA_TARGET))
+        q_fixed = conformal_quantile(cal_resid_known, ALPHA_TARGET)
+        q_naive = conformal_quantile(persist_cal_known, ALPHA_TARGET)
+        cal_pending = [{"date": row["target_date"], "resid": row["resid_abs"]}
+                       for _, row in cal.loc[~known].iterrows()]
 
         # A. ACI / B. RollingFixed
         for method, adaptive in [("aci", True), ("rolling_fixed", False)]:
             lo, hi, apath = run_rolling_conformal(
                 test["resid_abs"].values, test["pred"].values, test["target"].values,
                 h, init_history=list(cal_resid_known), adaptive=adaptive,
+                issue_dates=test.index, target_dates=test["target_date"], init_pending=cal_pending,
             )
             test[f"{method}_lower"], test[f"{method}_upper"] = lo, hi
             if method == "aci":
@@ -444,17 +482,17 @@ def main(h: int, tag: str, make_plots: bool, source: str = "snapshot",
             for m1, m2 in pairs:
                 w = block_bootstrap_mean_diff(
                     per_obs_scores[model_name][m1]["winkler"],
-                    per_obs_scores[model_name][m2]["winkler"], block_len)
+                    per_obs_scores[model_name][m2]["winkler"], block_len, family_size=COMPARISON_FAMILY_SIZE)
                 c = block_bootstrap_mean_diff(
                     per_obs_scores[model_name][m1]["covered"],
-                    per_obs_scores[model_name][m2]["covered"], block_len)
+                    per_obs_scores[model_name][m2]["covered"], block_len, family_size=COMPARISON_FAMILY_SIZE)
                 boot_results[model_name][f"{m1}_vs_{m2}"] = {"winkler_diff": w, "coverage_diff": c}
                 verdict = "差を確認" if w["significant"] else "明確な差なし"
                 print(f"    Winkler {m1} - {m2}: {w['point_diff']:+7.3f} "
-                      f"[95%CI {w['ci95_low']:+7.3f}, {w['ci95_high']:+7.3f}]  {verdict}")
+                      f"[補正CI {w['ci_family_low']:+7.3f}, {w['ci_family_high']:+7.3f}]  {verdict}")
                 verdict_c = "差を確認" if c["significant"] else "明確な差なし"
                 print(f"    Coverage {m1} - {m2}: {c['point_diff']*100:+6.2f}pt "
-                      f"[95%CI {c['ci95_low']*100:+6.2f}, {c['ci95_high']*100:+6.2f}]  {verdict_c}")
+                      f"[補正CI {c['ci_family_low']*100:+6.2f}, {c['ci_family_high']*100:+6.2f}]  {verdict_c}")
         RESULTS[tag]["bootstrap"] = boot_results
 
     # --- 相場局面別カバレッジ ---
@@ -478,7 +516,7 @@ def main(h: int, tag: str, make_plots: bool, source: str = "snapshot",
     print("\n--- 急変（Panic突入）前後21営業日のカバレッジ（GBMベース） ---")
     episodes = find_vix_episodes(df_raw, "4_Panic (>40)", gap_days=63)
     qualifying = [(s, e) for s, e in episodes if s >= gbm_test.index[0]]
-    print(f"  Test期間内の独立Panicエピソード: {len(qualifying)}個")
+    print(f"  Test期間内のPanic突入エピソード（独立性は仮定しない）: {len(qualifying)}個")
 
     def _window_stats(sub, m):
         y = sub["target"].values
@@ -523,10 +561,7 @@ def main(h: int, tag: str, make_plots: bool, source: str = "snapshot",
     # --- 予測基準時点 vs 対象日基準での再集計（h=21のpre/post逆転の検証） ---
     print("\n--- 対象日(target date)基準で揃えた急変前後カバレッジ（GBMベース） ---")
     if len(gbm_test) > h:
-        # 行 i の予測対象日は index[i + h]。末尾 h 行は対象日がTest期間外なので除外する。
-        n_aligned = len(gbm_test) - h
-        aligned = gbm_test.iloc[:n_aligned].copy()
-        aligned["target_date"] = gbm_test.index[h:h + n_aligned]
+        aligned = gbm_test.copy()  # exact dates retained before Treasury rows are dropped
         aligned_rows = []
         for s, e in qualifying:
             pre = aligned[(aligned["target_date"] < s)
@@ -562,10 +597,11 @@ def main(h: int, tag: str, make_plots: bool, source: str = "snapshot",
 
 def _make_plots(test, episodes, h):
     FIGURES_DIR.mkdir(exist_ok=True)
+    test = test.set_index("target_date", drop=False)
 
     # --- 実測 vs ACI区間 / 時点ごとの区間幅 / alpha_t ---
     fig, axes = plt.subplots(3, 1, figsize=(14, 11), sharex=True)
-    axes[0].plot(test.index, test["VIX"], color="black", linewidth=0.6, label="Actual VIX")
+    axes[0].plot(test.index, test["target"], color="black", linewidth=0.6, label="Actual VIX at target date")
     axes[0].fill_between(test.index, test["aci_lower"], test["aci_upper"],
                          color="steelblue", alpha=0.25, label="ACI 90% interval")
     for s, _ in episodes:
@@ -592,7 +628,7 @@ def _make_plots(test, episodes, h):
     for s, _ in episodes:
         axes[2].axvline(s, color="red", linestyle="--", alpha=0.35)
     axes[2].set_ylabel("alpha_t (ACI only)")
-    axes[2].set_title("ACI's adaptive alpha_t (drops -> interval widens after a miss)")
+    axes[2].set_title("ACI alpha at issuance, indexed by target date")
     plt.tight_layout()
     _safe_savefig(fig, FIGURES_DIR / "conformal_aci_overview.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -633,7 +669,7 @@ def _make_plots(test, episodes, h):
         for ax3, (name, onset) in zip(axes3, available.items()):
             pos = test.index.searchsorted(onset)
             sub = test.iloc[max(0, pos - 21):min(len(test), pos + 42)]
-            ax3.plot(sub.index, sub["VIX"], color="black", linewidth=1.3, label="Actual VIX")
+            ax3.plot(sub.index, sub["target"], color="black", linewidth=1.3, label="Actual VIX at target date")
             ax3.fill_between(sub.index, sub["aci_lower"], sub["aci_upper"],
                              color="steelblue", alpha=0.25, label="A. ACI")
             ax3.fill_between(sub.index, sub["rolling_fixed_lower"], sub["rolling_fixed_upper"],

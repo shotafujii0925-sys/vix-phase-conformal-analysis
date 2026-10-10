@@ -13,10 +13,10 @@ This repo is a finished job-hunting portfolio piece (statistics + time series co
 ```bash
 pip install -r requirements.txt
 
-# Full pipeline (sections 1-6 + h=1 conformal prediction; uses the offline snapshot)
+# Full pipeline (all analysis stages + h=1/h=21 conformal prediction; uses the offline snapshot)
 python vix_analysis.py
 
-# h=21 robustness pass, bootstrap CIs, and all figures (not produced by vix_analysis.py)
+# h=21 robustness pass, bootstrap CIs, and all figures (also produced by vix_analysis.py)
 python conformal_vix_forecast.py
 
 # Regenerate docs/key_results.md from data/results_*.json (run after any analysis script changes)
@@ -39,10 +39,10 @@ Individual analysis stages can also be run standalone: `python analysis_01_phase
 The repo has two analytical layers that share `data_pipeline.py` but answer different questions:
 
 1. **VIX-phase / future-return significance testing** (`analysis_01` through `analysis_05`, orchestrated end-to-end by `vix_analysis.py`): tests whether VIX regime predicts S&P 500 forward returns, correcting for autocorrelation from overlapping return windows (HAC, Durbin-Watson, thinned resampling, leave-one-crisis-out).
-2. **Time series conformal prediction of VIX itself** (`conformal_vix_forecast.py`): forecasts future VIX levels and builds prediction intervals via four methods compared under identical conditions — ACI (rolling window + adaptive alpha), RollingFixed (rolling window + fixed alpha), FixedSplit (frozen calibration quantile), NaiveBaseline (model-free). The A-vs-B / B-vs-C / A-vs-C contrasts isolate "does adapting alpha help" from "does refreshing the calibration window help." `vix_analysis.py` calls into this module's `main()` (passing `df_raw` to avoid a second data load) for the h=1 pass only; the h=21 robustness pass and all figures require running `conformal_vix_forecast.py` directly.
+2. **Time series conformal prediction of VIX itself** (`conformal_vix_forecast.py`): forecasts future VIX levels and builds prediction intervals via four methods compared under identical conditions — ACI (rolling window + adaptive alpha), RollingFixed (rolling window + fixed alpha), FixedSplit (frozen calibration quantile), NaiveBaseline (model-free). The A-vs-B / B-vs-C / A-vs-C contrasts isolate "does adapting alpha help" from "does refreshing the calibration window help." `vix_analysis.py` calls each analysis stage and this module's `main()` for both horizons. It saves JSON, all current figures, and regenerates the README and tables.
 
-**No-lookahead invariant**: in the walk-forward loop, a model refit at position `start` may only train on rows whose target has already resolved, i.e. rows up to `start - h + 1` (not `start`) — a row's target for horizon `h` isn't known until `h` steps later. Train/calibration/test are strict, non-overlapping, time-ordered slices; tests in `tests/test_repo.py` assert this directly (`test_walk_forward_training_targets_are_realized`, `test_train_calibration_test_periods_do_not_overlap`, `test_features_contain_no_future_information`).
+**No-lookahead invariant**: preserve `target_date` from the original market-day index before dropping Treasury-missing rows. Refit only on resolved targets (`target_date <= refit date`). Release calibration and test residuals by their actual target dates before issuing a closing-time forecast; never approximate market days with rows of the filtered feature table. Tests exercise the actual fitting and feedback code.
 
-**Generated artifacts flow one direction**: analysis scripts write `data/results_0N_*.json` and files under `figures/` → `build_key_results.py` reads those JSONs and writes `docs/key_results.md` → `README.md`'s headline numbers must match the JSON. `tests/test_repo.py::test_readme_key_numbers_match_results` enforces this — if you change an analysis script's output, rerun `build_key_results.py` and update `README.md` accordingly, don't hand-edit numbers in the README.
+**Generated artifacts flow one direction**: analysis scripts write `data/results_0N_*.json` and files under `figures/` → `build_key_results.py` reads those JSONs and writes `docs/key_results.md` → `README.md`'s headline numbers and verdicts are generated from the JSON. `tests/test_repo.py::test_readme_key_numbers_match_results` enforces this — if you change an analysis script's output, rerun `build_key_results.py` and update `README.md` accordingly, regenerate the README with build_key_results.py.
 
 **Windows path length**: this repo has previously hit `FileNotFoundError` from matplotlib/git when the absolute path (repo root + nested output filename) exceeded Windows' 260-char `MAX_PATH`. Keep the repo near a short path and keep new output filenames short; `conformal_vix_forecast.py`'s `_safe_savefig()` checks path length explicitly and raises a clear error instead of the raw OS error.

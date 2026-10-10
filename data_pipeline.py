@@ -155,6 +155,7 @@ def build_dataset(source: str = "snapshot", refresh_snapshot: bool = False,
 
     # 目的変数: 126営業日先のリターン（暦日6ヶ月後ではない）。未来値はここでのみ使用。
     df["SP500_Future_6M"] = df["SP500"].shift(-HORIZON_DAYS)
+    df["Return_6M_Target_Date"] = pd.Series(df.index, index=df.index).shift(-HORIZON_DAYS)
     df["Return_6M"] = df["SP500_Future_6M"] / df["SP500"] - 1
 
     # VIXフェーズ分類（水準ベース）
@@ -199,6 +200,25 @@ def find_vix_episodes(df: pd.DataFrame, phase_label: str = "4_Panic (>40)", gap_
         prev = d
     episodes.append((start, prev))
     return episodes
+
+
+def return_episodes(df: pd.DataFrame):
+    """Merge Panic episodes whose forward-return support overlaps.
+
+    Disjoint return support avoids mechanical overlap; it does not prove
+    statistical independence or a Bernoulli success probability of 0.5.
+    """
+    episodes = find_vix_episodes(df)
+    merged = []
+    for start, end in episodes:
+        if merged:
+            prior_start, prior_end = merged[-1]
+            prior_support_end = df.loc[prior_end, "Return_6M_Target_Date"]
+            if start <= prior_support_end:
+                merged[-1] = (prior_start, end)
+                continue
+        merged.append((start, end))
+    return merged
 
 
 if __name__ == "__main__":
