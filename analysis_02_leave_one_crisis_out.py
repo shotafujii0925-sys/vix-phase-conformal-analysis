@@ -9,7 +9,7 @@ import pandas as pd
 from scipy import stats
 from statsmodels.stats.oneway import anova_oneway
 
-from data_pipeline import DATA_DIR, build_dataset, analysis_frame, VIX_PHASE_LABELS
+from data_pipeline import DATA_DIR, build_dataset, analysis_frame, return_episodes, VIX_PHASE_LABELS
 
 RESULTS = {}
 
@@ -20,28 +20,17 @@ df = analysis_frame(df_raw, ["VIX_Phase", "Return_6M"])
 # 「63営業日（約3ヶ月）以上VIX>40の日が空いたら別エピソード」とみなす
 panic_dates = df.index[df["VIX_Phase"] == "4_Panic (>40)"]
 gap_threshold_days = 63
-
-episodes = []
-if len(panic_dates) > 0:
-    start = panic_dates[0]
-    prev = panic_dates[0]
-    # 営業日インデックス上のギャップで判定（df全体のインデックス位置を使う）
-    pos = {d: i for i, d in enumerate(df.index)}
-    for d in panic_dates[1:]:
-        if pos[d] - pos[prev] > gap_threshold_days:
-            episodes.append((start, prev))
-            start = d
-        prev = d
-    episodes.append((start, prev))
+pos = {d: i for i, d in enumerate(df.index)}
+episodes = return_episodes(df)
 
 print("=" * 70)
-print(f"VIX>40（Panic）のエピソード検出（{gap_threshold_days}営業日以上の空白で別エピソードとみなす）")
+print("VIX>40（Panic）のエピソード検出（将来リターン期間が重なるエピソードを統合）")
 print("=" * 70)
 for i, (s, e) in enumerate(episodes, 1):
     n_days = ((df.index >= s) & (df.index <= e) & (df["VIX_Phase"] == "4_Panic (>40)")).sum()
     print(f"  エピソード{i}: {s.date()} 〜 {e.date()}  (Panic日数={n_days})")
 
-print(f"\n独立エピソード数: {len(episodes)}  (対して単純な観測日数: {len(panic_dates)})")
+print(f"\nリターン期間が重ならないエピソード数: {len(episodes)}  (観測日数: {len(panic_dates)})")
 RESULTS["panic_episodes"] = [
     {"start": str(s.date()), "end": str(e.date())} for s, e in episodes
 ]
@@ -177,7 +166,7 @@ n_ep = len(episode_means)
 n_exceed = sum(r["exceeds_normal"] for r in episode_means)
 ep_vals = np.array([r["mean_return_6m"] for r in episode_means])
 
-# 符号検定（両側二項検定）: エピソードを独立単位とみなした最も保守的な推論
+# Conditional reference only: disjoint support does not prove independence or p=0.5.
 sign_p = float(stats.binomtest(n_exceed, n_ep, 0.5).pvalue)
 print(f"\n  {n_ep}エピソード中 {n_exceed}個 でNormal平均を上回った")
 print(f"  符号検定（両側二項検定, H0: 上回る確率=0.5）: p = {sign_p:.4f}")
@@ -186,8 +175,8 @@ print(f"  エピソード平均リターンの中央値 = {np.median(ep_vals):+.
 print(f"""
   【この検定の限界】n={n_ep} は極めて小さく、検出力は低い。
   符号検定は「エピソード内部の重複」を回避する代わりに情報の大半を捨てているため、
-  日次検定（過大評価）と符号検定（過小評価に近い保守側）の間に真の不確実性がある。
-  本研究はどちらか一方を「正しい有意性」として採用しない。""")
+  エピソード間の独立性と、Normal平均を上回る確率=0.5は検証できていない。
+  二項検定のp値は、この2つを仮定した参考値に限る。確証的な有意性として採用しない。""")
 
 RESULTS["episode_level_inference"] = {
     "normal_group_mean": float(normal_mean),
@@ -198,7 +187,7 @@ RESULTS["episode_level_inference"] = {
     "episode_mean_median": float(np.median(ep_vals)),
     "episode_mean_min": float(ep_vals.min()),
     "episode_mean_max": float(ep_vals.max()),
-    "caveat": "n=9は小標本であり検出力は低い。日次p値は自己相関により過大評価される。",
+    "caveat": "将来リターンの機械的重複は統合済み。独立性と成功確率0.5は未検証で、二項p値は条件付き参考値。",
 }
 
 with open(DATA_DIR / "results_02_leave_one_crisis_out.json", "w", encoding="utf-8") as f:

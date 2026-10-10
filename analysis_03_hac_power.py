@@ -4,7 +4,6 @@ B-4: HAC(Newey-West)補正のラグ幅を振って、VIX_Zの有意性がラグ�
 A-5: 間引きANOVAで「有意差なし」となった標本サイズにおける検出力(power)・最小検出効果量(MDE)を確認する。
 """
 import json
-import numpy as np
 import statsmodels.api as sm
 from statsmodels.stats.power import FTestAnovaPower
 
@@ -64,23 +63,14 @@ print(f"（効果量・Nは {upstream_path.name} から読み込み）")
 
 power_results = []
 for sc in scenarios:
-    eta2 = sc["observed_eta_sq"]
     n_total = sc["N"]
-    f_effect = np.sqrt(eta2 / (1 - eta2))  # Cohen's f
-    achieved_power = power_solver.solve_power(effect_size=f_effect, nobs=n_total,
-                                              alpha=0.05, k_groups=k_groups, power=None)
-    required_n_total = power_solver.solve_power(effect_size=f_effect, nobs=None,
-                                                alpha=0.05, k_groups=k_groups, power=0.8)
-    note = ""
-    if sc["min_group_n"] < 2:
-        note = "  ※最小群n<2のためeta^2自体が参考値"
-    print(f"{sc['name']}: N={n_total}  観測eta^2={eta2:.4f} (Cohen's f={f_effect:.4f}){note}")
-    print(f"   -> この効果量・この標本サイズでの検出力(power) = {achieved_power:.3f}")
-    print(f"   -> 80%検出力に必要な合計N = {required_n_total:.0f} (群あたり約{required_n_total/k_groups:.0f})")
+    mde = power_solver.solve_power(effect_size=None, nobs=n_total,
+                                   alpha=0.05, k_groups=k_groups, power=0.8)
+    print(f"{sc['name']}: N={n_total}  80%検出力の最小検出効果量 Cohen's f={mde:.4f}")
     power_results.append({
-        "scenario": sc["name"], "N": n_total, "observed_eta_sq": eta2,
-        "cohens_f": float(f_effect), "achieved_power": float(achieved_power),
-        "required_n_for_80pct_power": float(required_n_total),
+        "scenario": sc["name"], "N": n_total,
+        "mde_cohens_f_at_80pct": float(mde),
+        "assumptions": "独立・等分散ANOVAの計画上の近似。観測効果量による事後検出力ではない。",
         "min_group_n": sc["min_group_n"],
     })
 RESULTS["power_analysis"] = power_results

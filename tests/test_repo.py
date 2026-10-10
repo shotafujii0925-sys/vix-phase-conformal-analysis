@@ -118,22 +118,26 @@ def test_features_contain_no_future_information(raw_df, h):
 
 
 @pytest.mark.parametrize("h", [1, 21])
-def test_walk_forward_training_targets_are_realized(h):
+def test_walk_forward_training_targets_are_realized(raw_df, h, monkeypatch):
     """
     walk-forwardの各再学習で、学習データのtargetが再学習時点で実現済みである。
     walk_forward_forecast と同じ学習窓の決め方を再現して検証する。
     """
-    n = 3000
-    start = cvf.BURN_IN_DAYS
-    while start < n:
-        train_end = start - h + 1
-        # 学習に使う最終行 (train_end - 1) のtargetは (train_end - 1 + h) 行目で実現する。
-        last_train_row = train_end - 1
-        realized_at = last_train_row + h
-        assert realized_at <= start, (
-            f"h={h}, start={start}: 学習末尾行のtargetが{realized_at}行目で実現し、"
-            f"再学習時点{start}より後 → 先読み")
-        start = min(start + cvf.REFIT_EVERY, n)
+    feat = cvf.build_features(raw_df, h).iloc[:4000]
+    checks = []
+
+    class RecordingModel:
+        def fit(self, x, y):
+            self.last_target_date = feat.loc[x.index, "target_date"].max()
+
+        def predict(self, x):
+            assert self.last_target_date <= x.index[0]
+            checks.append(x.index[0])
+            return np.zeros(len(x))
+
+    monkeypatch.setattr(cvf, "LinearRegression", RecordingModel)
+    cvf.walk_forward_forecast(feat, "linear", h)
+    assert len(checks) > 1
 
 
 def test_train_calibration_test_periods_do_not_overlap(raw_df):
@@ -169,8 +173,8 @@ def test_aci_feedback_is_delayed_by_h():
     resid, pred, target, init_history, h = _toy_inputs()
     _, _, alpha_path = cvf.run_rolling_conformal(
         resid, pred, target, h, init_history, adaptive=True)
-    assert np.allclose(alpha_path[:h + 1], cvf.ALPHA_TARGET), \
-        "最初のh+1ステップでalphaが動いている（遅延が効いていない）"
+    assert np.allclose(alpha_path[:h], cvf.ALPHA_TARGET), \
+        "対象日より前にalphaが動いている"
     assert not np.allclose(alpha_path, cvf.ALPHA_TARGET), \
         "alphaが最後まで全く動いていない"
 
