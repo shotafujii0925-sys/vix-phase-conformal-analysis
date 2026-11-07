@@ -26,3 +26,6 @@ desktop.ini
 
 # Jupyter（本リポジトリはノートブックを使用しない）
 .ipynb_checkpoints/
+
+# 市場データは再配布しない（DATA_POLICY.md を参照）
+data/vix_sp500_tnx_raw.csv

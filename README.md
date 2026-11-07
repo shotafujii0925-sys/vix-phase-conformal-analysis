@@ -25,7 +25,7 @@
 |---|---|
 | データ | S&P500(^GSPC)、VIX(^VIX)、米10年国債利回り(^TNX) の日次終値 |
 | 期間 | 1990-01-02 〜 2023-12-29（8,565営業日） |
-| 出典 | Yahoo Finance（yfinance 1.5.1）、2026-09-08取得のスナップショットを同梱 |
+| 出典 | Yahoo Finance（yfinance 1.5.1）、2026-09-08取得。原データは同梱しない（[DATA_POLICY.md](DATA_POLICY.md)） |
 | 目的変数 | 前半: S&P500の126営業日先リターン / 後半: h営業日先のVIX水準 |
 
 ### 最も重要な発見
@@ -91,13 +91,14 @@ ACIは他手法より劣化が小さいが、それでも目標90%には遠く�
 
 ```bash
 pip install -r requirements.txt
-python vix_analysis.py              # 前半＋h=1のコンフォーマル予測（オフライン、同梱スナップショット使用）
+python data_pipeline.py --source online --refresh-snapshot   # 市場データの取得（利用条件を確認のうえ、最初に1回）
+python vix_analysis.py              # 前半＋h=1のコンフォーマル予測（取得済みのスナップショットを使用）
 python conformal_vix_forecast.py    # h=21とブートストラップ、全図の生成
 python build_key_results.py         # docs/key_results.md を再生成
-python -m pytest tests/ -v          # 24件のテスト（外部API接続なし）
+python -m pytest tests/ -v          # 24件のテスト（外部API接続なし。データがなければデータ依存のテストをスキップ）
 ```
 
-既定では同梱のスナップショット（`data/vix_sp500_tnx_raw.csv`、2026-09-08取得）を読み込むため、**ネットワークなしで本READMEの数値が再現できる**。最新データで再取得する場合のみ `--source online` を指定する。
+市場データは同梱しない。本READMEの数値は2026-09-08取得のスナップショット（`data/vix_sp500_tnx_raw.csv`）から計算した。再取得すると、調整値の改訂により数値が完全には一致しないことがある。
 
 ### AI利用の概要
 
@@ -239,7 +240,7 @@ vix_research/
 ├── tests/test_repo.py                  # 24件のテスト（外部API接続なし）
 ├── requirements.txt / setup.cfg / .gitignore
 ├── data/
-│   ├── vix_sp500_tnx_raw.csv           # 2026-09-08取得のスナップショット（既定のデータソース）
+│   ├── vix_sp500_tnx_raw.csv           # スナップショットの保存先（既定のデータソース、リポジトリには含めない）
 │   └── results_*.json                  # 各分析の出力（docs/key_results.md の生成元）
 ├── docs/
 │   ├── key_results.md                  # 全数値表（自動生成）
@@ -264,7 +265,7 @@ vix_research/
 | 数値表の再生成 | `python build_key_results.py` |
 | 検証 | `python -m pytest tests/ -v` |
 
-全スクリプトは `data_pipeline.build_dataset()` のみをデータソースとし、既定でスナップショットを読む。したがって実行順序に依存せず、ネットワークなしで再現できる。`--source online` を明示した場合のみ yfinance から再取得する（Yahoo Finance側の改定により数値が変わる可能性がある）。
+全スクリプトは `data_pipeline.build_dataset()` のみをデータソースとし、既定でローカルのスナップショットを読む。したがって実行順序に依存しない。スナップショットは同梱しないので、最初に `--source online --refresh-snapshot` で取得する。
 
 ---
 

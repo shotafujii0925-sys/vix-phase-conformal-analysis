@@ -13,7 +13,7 @@ This repo is a finished job-hunting portfolio piece (statistics + time series co
 ```bash
 pip install -r requirements.txt
 
-# Full pipeline (sections 1-6 + h=1 conformal prediction; uses the offline snapshot)
+# Full pipeline (sections 1-6 + h=1 conformal prediction; uses the local snapshot; not committed, fetch it first with `python data_pipeline.py --source online --refresh-snapshot`)
 python vix_analysis.py
 
 # h=21 robustness pass, bootstrap CIs, and all figures (not produced by vix_analysis.py)
@@ -34,7 +34,7 @@ Individual analysis stages can also be run standalone: `python analysis_01_phase
 
 ## Architecture
 
-**`data_pipeline.py` is the single source of truth for data.** Every analysis script imports `build_dataset()` from it — never fetch or read data independently. `build_dataset()` defaults to `source="snapshot"`, reading `data/vix_sp500_tnx_raw.csv` (committed, dated 2026-09-08) so all results are reproducible offline. Pass `source="online"` to refetch from yfinance, and `refresh_snapshot=True` to overwrite the snapshot with that pull. Derived columns (`Return_6M`, `VIX_Phase`, `VIX_Z`, `Treasury_10Y_Diff1`, etc.) are always recomputed from the raw columns, never read from the snapshot as-is.
+**`data_pipeline.py` is the single source of truth for data.** Every analysis script imports `build_dataset()` from it — never fetch or read data independently. `build_dataset()` defaults to `source="snapshot"`, reading `data/vix_sp500_tnx_raw.csv` (local only and git-ignored, dated 2026-09-08; see DATA_POLICY.md) so results are reproducible offline once it exists. Pass `source="online"` to refetch from yfinance, and `refresh_snapshot=True` to overwrite the snapshot with that pull. Derived columns (`Return_6M`, `VIX_Phase`, `VIX_Z`, `Treasury_10Y_Diff1`, etc.) are always recomputed from the raw columns, never read from the snapshot as-is.
 
 The repo has two analytical layers that share `data_pipeline.py` but answer different questions:
 

@@ -30,6 +30,8 @@ import data_pipeline as dp  # noqa: E402
 # =====================================================================
 @pytest.fixture(scope="module")
 def raw_df():
+    if not dp.SNAPSHOT_PATH.exists():
+        pytest.skip("市場データは同梱していない（DATA_POLICY.md）")
     return dp.build_dataset(source="snapshot", verbose=False)
 
 
@@ -38,7 +40,8 @@ def raw_df():
 # =====================================================================
 def test_snapshot_exists_and_loads():
     """CSVスナップショットが存在し、外部接続なしで読み込める。"""
-    assert dp.SNAPSHOT_PATH.exists(), "スナップショットCSVがありません"
+    if not dp.SNAPSHOT_PATH.exists():
+        pytest.skip("市場データは同梱していない（DATA_POLICY.md）")
     df = dp._load_raw_snapshot()
     assert len(df) > 8000
     assert list(df.columns) == dp.RAW_COLUMNS
